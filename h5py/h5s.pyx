@@ -47,7 +47,7 @@ UNLIMITED = H5S_UNLIMITED
 NO_CLASS = H5S_NO_CLASS
 SCALAR   = H5S_SCALAR
 SIMPLE   = H5S_SIMPLE
-_NULL = H5S_NULL
+globals()["NULL"] = H5S_NULL  # "NULL" is reserved in Cython
 
 #enum H5S_sel_type
 SEL_ERROR       = H5S_SEL_ERROR
@@ -485,7 +485,7 @@ cdef class SpaceID(ObjectID):
 
         nelements = hcoords.dimensions[0]
 
-        H5Sselect_elements(self.id, <H5S_seloper_t>op, nelements, <hsize_t**>hcoords.data)
+        H5Sselect_elements(self.id, <H5S_seloper_t>op, nelements, <hsize_t*>hcoords.data)
 
 
     # === Hyperslab selection functions =======================================

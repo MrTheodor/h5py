@@ -7,16 +7,26 @@
 # License:  Standard 3-clause BSD; see "license.txt" for full license terms
 #           and contributor agreement.
 
+"""
+    Implements support for high-level dataset access.
+"""
+
+from __future__ import absolute_import
+
 import posixpath as pp
 import sys
+
+import six
+from six.moves import xrange    # pylint: disable=redefined-builtin
+
 import numpy
 
-import h5py
-from h5py import h5s, h5t, h5r, h5d
-from .base import HLObject, py3, phil, with_phil
+from .. import h5s, h5t, h5r, h5d
+from .base import HLObject, phil, with_phil
 from . import filters
 from . import selections as sel
 from . import selections2 as sel2
+from .datatype import Datatype
 
 _LEGACY_GZIP_COMPRESSION_VALS = frozenset(range(10))
 
@@ -35,6 +45,7 @@ def readtime_dtype(basetype, names):
 
     return numpy.dtype([(name, basetype.fields[name][0]) for name in names])
 
+
 def make_new_dset(parent, shape=None, dtype=None, data=None,
                  chunks=None, compression=None, shuffle=None,
                     fletcher32=None, maxshape=None, compression_opts=None,
@@ -46,7 +57,7 @@ def make_new_dset(parent, shape=None, dtype=None, data=None,
 
     # Convert data to a C-contiguous ndarray
     if data is not None:
-        import base
+        from . import base
         data = numpy.asarray(data, order="C", dtype=base.guess_dtype(data))
 
     # Validate shape
@@ -66,7 +77,7 @@ def make_new_dset(parent, shape=None, dtype=None, data=None,
                  "{} is not compatible with {}".format(chunks, shape)
         raise ValueError(errmsg)
 
-    if isinstance(dtype, h5py.Datatype):
+    if isinstance(dtype, Datatype):
         # Named types are used as-is
         tid = dtype.id
         dtype = tid.dtype  # Following code needs this
@@ -124,14 +135,20 @@ def make_new_dset(parent, shape=None, dtype=None, data=None,
 
 class AstypeContext(object):
 
+    """
+        Context manager which allows changing the type read from a dataset.
+    """
+    
     def __init__(self, dset, dtype):
         self._dset = dset
         self._dtype = numpy.dtype(dtype)
 
     def __enter__(self):
+        # pylint: disable=protected-access
         self._dset._local.astype = self._dtype
 
     def __exit__(self, *args):
+        # pylint: disable=protected-access
         self._dset._local.astype = None
 
 
@@ -153,7 +170,8 @@ class Dataset(HLObject):
     @property
     @with_phil
     def dims(self):
-        from . dims import DimensionManager
+        """ Access dimension scales attached to this dataset. """
+        from .dims import DimensionManager
         return DimensionManager(self)
 
     @property
@@ -164,6 +182,7 @@ class Dataset(HLObject):
     @shape.setter
     @with_phil
     def shape(self, shape):
+        # pylint: disable=missing-docstring
         self.resize(shape)
 
     @property
@@ -248,7 +267,7 @@ class Dataset(HLObject):
     def fillvalue(self):
         """Fill value for this dataset (0 by default)"""
         arr = numpy.ndarray((1,), dtype=self.dtype)
-        dcpl = self._dcpl.get_fill_value(arr)
+        self._dcpl.get_fill_value(arr)
         return arr[0]
 
     @with_phil
@@ -349,47 +368,10 @@ class Dataset(HLObject):
         args = args if isinstance(args, tuple) else (args,)
 
         # Sort field indices from the rest of the args.
-        names = tuple(x for x in args if isinstance(x, basestring))
-        args = tuple(x for x in args if not isinstance(x, basestring))
-        if not py3:
-            names = tuple(x.encode('utf-8') if isinstance(x, unicode) else x for x in names)
-
-        def strip_fields(basetype):
-            """ Strip extra dtype information from special types """
-            if basetype.kind == 'O':
-                return numpy.dtype('O')
-            if basetype.fields is not None:
-                if basetype.kind in ('i','u'):
-                    return basetype.fields['enum'][0]
-                fields = []
-                for name in basetype.names:
-                    fff = basetype.fields[name]
-                    if len(fff) == 3:
-                        (subtype, offset, meta) = fff
-                    else:
-                        subtype, meta = fff
-                        offset = 0
-                    subtype = strip_fields(subtype)
-                    fields.append((name, subtype))
-                return numpy.dtype(fields)
-            return basetype
-
-        def readtime_dtype(basetype, names):
-            """ Make a NumPy dtype appropriate for reading """
-
-            basetype = strip_fields(basetype)
-
-            if len(names) == 0:  # Not compound, or we want all fields
-                return basetype
-
-            if basetype.names is None:  # Names provided, but not compound
-                raise ValueError("Field names only allowed for compound types")
-
-            for name in names:  # Check all names are legal
-                if not name in basetype.names:
-                    raise ValueError("Field %s does not appear in this type." % name)
-
-            return numpy.dtype([(name, basetype.fields[name][0]) for name in names])
+        names = tuple(x for x in args if isinstance(x, six.string_types))
+        args = tuple(x for x in args if not isinstance(x, six.string_types))
+        if not six.PY3:
+            names = tuple(x.encode('utf-8') if isinstance(x, six.text_type) else x for x in names)
 
         new_dtype = getattr(self._local, 'astype', None)
         if new_dtype is not None:
@@ -463,7 +445,7 @@ class Dataset(HLObject):
 
         # Perfom the actual read
         mspace = h5s.create_simple(mshape)
-        fspace = selection._id
+        fspace = selection.id
         self.id.read(mspace, fspace, arr, mtype)
 
         # Patch up the output for NumPy
@@ -487,15 +469,15 @@ class Dataset(HLObject):
         args = args if isinstance(args, tuple) else (args,)
 
         # Sort field indices from the slicing
-        names = tuple(x for x in args if isinstance(x, basestring))
-        args = tuple(x for x in args if not isinstance(x, basestring))
-        if not py3:
-            names = tuple(x.encode('utf-8') if isinstance(x, unicode) else x for x in names)
+        names = tuple(x for x in args if isinstance(x, six.string_types))
+        args = tuple(x for x in args if not isinstance(x, six.string_types))
+        if not six.PY3:
+            names = tuple(x.encode('utf-8') if isinstance(x, six.text_type) else x for x in names)
 
         # Generally we try to avoid converting the arrays on the Python
         # side.  However, for compound literals this is unavoidable.
         vlen = h5t.check_dtype(vlen=self.dtype)
-        if vlen not in (bytes, unicode, None):
+        if vlen is not None and vlen not in (bytes, six.text_type):
             try:
                 val = numpy.asarray(val, dtype=vlen)
             except ValueError:
@@ -557,7 +539,7 @@ class Dataset(HLObject):
         
             # Write non-compound source into a single dataset field
             if len(names) == 1 and val.dtype.fields is None:
-                subtype = h5y.py_create(val.dtype)
+                subtype = h5t.py_create(val.dtype)
                 mtype = h5t.create(h5t.COMPOUND, subtype.get_size())
                 mtype.insert(self._e(names[0]), 0, subtype)
 
@@ -582,7 +564,7 @@ class Dataset(HLObject):
             return
 
         # Broadcast scalars if necessary.
-        if (mshape == () and selection.mshape != ()):
+        if mshape == () and selection.mshape != ():
             if self.dtype.subdtype is not None:
                 raise TypeError("Scalar broadcasting is not supported for array dtypes")
             val2 = numpy.empty(selection.mshape[-1], dtype=val.dtype)
@@ -593,7 +575,7 @@ class Dataset(HLObject):
         # Perform the write, with broadcasting
         # Be careful to pad memory shape with ones to avoid HDF5 chunking
         # glitch, which kicks in for mismatched memory/file selections
-        if(len(mshape) < len(self.shape)):
+        if len(mshape) < len(self.shape):
             mshape_pad = (1,)*(len(self.shape)-len(mshape)) + mshape
         else:
             mshape_pad = mshape
@@ -614,7 +596,7 @@ class Dataset(HLObject):
                 source_sel = sel.SimpleSelection(self.shape)
             else:
                 source_sel = sel.select(self.shape, source_sel, self.id)  # for numpy.s_
-            fspace = source_sel._id
+            fspace = source_sel.id
 
             if dest_sel is None:
                 dest_sel = sel.SimpleSelection(dest.shape)
@@ -637,7 +619,7 @@ class Dataset(HLObject):
                 source_sel = sel.SimpleSelection(source.shape)
             else:
                 source_sel = sel.select(source.shape, source_sel, self.id)  # for numpy.s_
-            mspace = source_sel._id
+            mspace = source_sel.id
 
             if dest_sel is None:
                 dest_sel = sel.SimpleSelection(self.shape)
@@ -665,15 +647,39 @@ class Dataset(HLObject):
     @with_phil
     def __repr__(self):
         if not self:
-            r = u'<Closed HDF5 dataset>'
+            r = six.u('<Closed HDF5 dataset>')
         else:
             if self.name is None:
-                namestr = u'("anonymous")'
+                namestr = six.u('("anonymous")')
             else:
                 name = pp.basename(pp.normpath(self.name))
-                namestr = u'"%s"' % (name if name != u'' else u'/')
-            r = u'<HDF5 dataset %s: shape %s, type "%s">' % \
+                namestr = six.u('"%s"') % (
+                    name if name != six.u('') else six.u('/'))
+            r = six.u('<HDF5 dataset %s: shape %s, type "%s">') % \
                 (namestr, self.shape, self.dtype.str)
-        if py3:
+        if six.PY3:
             return r
         return r.encode('utf8')
+        
+    if hasattr(h5d.DatasetID, "refresh"):
+        @with_phil
+        def refresh(self):
+            """ Refresh the dataset metadata by reloading from the file.
+            
+            This is part of the SWMR features and only exist when the HDF5
+            librarary version >=1.9.178
+            """
+            self._id.refresh()
+                
+    if hasattr(h5d.DatasetID, "flush"):
+        @with_phil
+        def flush(self):
+            """ Flush the dataset data and metadata to the file.
+            If the dataset is chunked, raw data chunks are written to the file.
+            
+            This is part of the SWMR features and only exist when the HDF5 
+            librarary version >=1.9.178
+            """
+            self._id.flush()
+            
+

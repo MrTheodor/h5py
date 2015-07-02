@@ -7,19 +7,25 @@
 # License:  Standard 3-clause BSD; see "license.txt" for full license terms
 #           and contributor agreement.
 
+"""
+    Implements support for high-level access to HDF5 groups.
+"""
+
+from __future__ import absolute_import
+
 import posixpath as pp
-
+import six
 import numpy
-import collections
+import sys
 
-from h5py import h5g, h5i, h5o, h5r, h5t, h5l, h5p
+from .. import h5g, h5i, h5o, h5r, h5t, h5l, h5p
 from . import base
-from .base import HLObject, DictCompat, py3, phil, with_phil
+from .base import HLObject, MutableMappingHDF5, phil, with_phil
 from . import dataset
 from . import datatype
 
 
-class Group(HLObject, DictCompat):
+class Group(HLObject, MutableMappingHDF5):
 
     """ Represents an HDF5 group.
     """
@@ -193,6 +199,8 @@ class Group(HLObject, DictCompat):
         >>> if cls == SoftLink:
         ...     print '"foo" is a soft link!'
         """
+        # pylint: disable=arguments-differ
+
         with phil:
             if not (getclass or getlink):
                 try:
@@ -221,15 +229,20 @@ class Group(HLObject, DictCompat):
                         return SoftLink
                     linkbytes = self.id.links.get_val(self._e(name))
                     return SoftLink(self._d(linkbytes))
+                    
                 elif typecode == h5l.TYPE_EXTERNAL:
                     if getclass:
                         return ExternalLink
                     filebytes, linkbytes = self.id.links.get_val(self._e(name))
-                    # TODO: I think this is wrong,
-                    # we should use filesystem decoding on the filename
-                    return ExternalLink(self._d(filebytes), self._d(linkbytes))
+                    try:
+                        filetext = filebytes.decode(sys.getfilesystemencoding())
+                    except (UnicodeError, LookupError):
+                        filetext = filebytes
+                    return ExternalLink(filetext, self._d(linkbytes))
+                    
                 elif typecode == h5l.TYPE_HARD:
                     return HardLink if getclass else HardLink()
+                    
                 else:
                     raise TypeError("Unknown link type")
 
@@ -415,6 +428,7 @@ class Group(HLObject, DictCompat):
         """
         with phil:
             def proxy(name):
+                """ Call the function with the text name, not bytes """
                 return func(self._d(name))
             return h5o.visit(self.id, proxy)
 
@@ -444,6 +458,7 @@ class Group(HLObject, DictCompat):
         """
         with phil:
             def proxy(name):
+                """ Use the text name of the object, not bytes """
                 name = self._d(name)
                 return func(name, self[name])
             return h5o.visit(self.id, proxy)
@@ -451,16 +466,16 @@ class Group(HLObject, DictCompat):
     @with_phil
     def __repr__(self):
         if not self:
-            r = u"<Closed HDF5 group>"
+            r = six.u("<Closed HDF5 group>")
         else:
-            namestr = (u'"%s"' % self.name) if self.name is not None else u"(anonymous)"
-            r = u'<HDF5 group %s (%d members)>' % (namestr, len(self))
+            namestr = (
+                six.u('"%s"') % self.name
+            ) if self.name is not None else six.u("(anonymous)")
+            r = six.u('<HDF5 group %s (%d members)>') % (namestr, len(self))
 
-        if py3:
+        if six.PY3:
             return r
         return r.encode('utf8')
-
-collections.MutableMapping.register(Group)
 
 
 class HardLink(object):
@@ -473,7 +488,6 @@ class HardLink(object):
     pass
 
 
-#TODO: implement equality testing for these
 class SoftLink(object):
 
     """
@@ -484,6 +498,7 @@ class SoftLink(object):
 
     @property
     def path(self):
+        """ Soft link value.  Not guaranteed to be a valid path. """
         return self._path
 
     def __init__(self, path):
@@ -502,10 +517,12 @@ class ExternalLink(object):
 
     @property
     def path(self):
+        """ Soft link path, i.e. the part inside the HDF5 file. """
         return self._path
 
     @property
     def filename(self):
+        """ Path to the external HDF5 file in the filesystem. """
         return self._filename
 
     def __init__(self, filename, path):

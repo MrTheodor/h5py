@@ -1,44 +1,62 @@
-Announcing HDF5 for Python (h5py) 2.4.0 BETA
-============================================
+Announcing HDF5 for Python (h5py) 2.5.0
+========================================
 
-The h5py team is happy to announce the availability of h5py 2.4.0 (beta).
+The h5py team is happy to announce the availability of h5py 2.5.0.
 
-This beta version will be available for approximately two weeks.  Because
-of the substantial number of changes to the code base, we welcome feedback,
-particularly from MPI users.
+This release introduces experimental support for the highly-anticipated
+"Single Writer Multiple Reader" (SWMR) feature in the upcoming HDF5 1.10
+release.  SWMR allows sharing of a single HDF5 file between multiple processes
+without the complexity of MPI or multiprocessing-based solutions.  
 
-Documentation for the beta is at:
+This is an experimental feature that should NOT be used in production code.
+We are interested in getting feedback from the broader community with respect
+to performance and the API design.
 
-http://docs.h5py.org/en/latest/
+For more details, check out the h5py user guide:
+http://docs.h5py.org/en/latest/swmr.html
+
+SWMR support was contributed by Ulrik Pedersen.
+
+
+What's h5py?
+------------
+
+The h5py package is a Pythonic interface to the HDF5 binary data format.
+
+It lets you store huge amounts of numerical data, and easily manipulate
+that data from NumPy. For example, you can slice into multi-terabyte
+datasets stored on disk, as if they were real NumPy arrays. Thousands of
+datasets can be stored in a single file, categorized and tagged however
+you want.
+
+Documentation is at:
+
+http://docs.h5py.org
 
 
 Changes
 -------
 
-This release incorporates a total re-write of the identifier management
-system in h5py.  As part of this refactoring, the entire API is also now
-protected by threading locks.  User-visible changes include:
-
-* Files are now automatically closed when all objects within them
-  are unreachable. Previously, if File.close() was not explicitly called,
-  files would remain open and "leaks" were possible if the File object
-  was lost.
-
-* The entire API is now believed to be thread-safe (feedback welcome!).
-
-* External links now work if the target file is already open.  Previously
-  this was not possible because of a mismatch in the file close strengths.
+* Experimental SWMR support
+* Group and AttributeManager classes now inherit from the appropriate ABCs
+* Fixed an issue with 64-bit float VLENS
+* Cython warning cleanups related to "const"
+* Entire code base ported to "six"; 2to3 removed from setup.py
   
-* The options to setup.py have changed; a new top-level "configure"
-  command handles options like --hdf5=/path/to/hdf5 and --mpi.  Setup.py 
-  now works correctly under Python 3 when these options are used.
-  
-* Cython (0.17+) is now required when building from source.
-  
-* The minimum NumPy version is now 1.6.1.
 
-* Various other enhancements and bug fixes
-  
+Acknowlegements
+---------------
+
+This release incorporates changes from, among others:
+
+* Ulrik Pedersen
+* James Tocknell
+* Will Parkin
+* Antony Lee
+* Peter H. Li
+* Peter Colberg
+* Ghislain Antony Vaillant
+
 
 Where to get it
 ---------------

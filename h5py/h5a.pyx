@@ -227,7 +227,7 @@ cdef class _AttrVisitor:
         self.func = func
         self.retval = None
 
-cdef herr_t cb_attr_iter(hid_t loc_id, char* attr_name, H5A_info_t *ainfo, void* vis_in) except 2:
+cdef herr_t cb_attr_iter(hid_t loc_id, const char* attr_name, const H5A_info_t *ainfo, void* vis_in) except 2:
     cdef _AttrVisitor vis = <_AttrVisitor>vis_in
     cdef AttrInfo info = AttrInfo()
     info.info = ainfo[0]
@@ -236,7 +236,7 @@ cdef herr_t cb_attr_iter(hid_t loc_id, char* attr_name, H5A_info_t *ainfo, void*
         return 1
     return 0
 
-cdef herr_t cb_attr_simple(hid_t loc_id, char* attr_name, H5A_info_t *ainfo, void* vis_in) except 2:
+cdef herr_t cb_attr_simple(hid_t loc_id, const char* attr_name, const H5A_info_t *ainfo, void* vis_in) except 2:
     cdef _AttrVisitor vis = <_AttrVisitor>vis_in
     vis.retval = vis.func(attr_name)
     if vis.retval is not None:
@@ -330,8 +330,8 @@ cdef class AttrID(ObjectID):
 
     
     @with_phil
-    def read(self, ndarray arr not None):
-        """(NDARRAY arr)
+    def read(self, ndarray arr not None, TypeID mtype=None):
+        """(NDARRAY arr, TypeID mtype=None)
 
         Read the attribute data into the given Numpy array.  Note that the
         Numpy array must have the same shape as the HDF5 attribute, and a
@@ -339,8 +339,9 @@ cdef class AttrID(ObjectID):
 
         The Numpy array must be writable and C-contiguous.  If this is not
         the case, the read will fail with an exception.
+        
+        If provided, the HDF5 TypeID mtype will override the array's dtype.
         """
-        cdef TypeID mtype
         cdef hid_t space_id
         space_id = 0
 
@@ -348,7 +349,8 @@ cdef class AttrID(ObjectID):
             space_id = H5Aget_space(self.id)
             check_numpy_write(arr, space_id)
 
-            mtype = py_create(arr.dtype)
+            if mtype is None:
+                mtype = py_create(arr.dtype)
 
             attr_rw(self.id, mtype.id, PyArray_DATA(arr), 1)
 
@@ -358,7 +360,7 @@ cdef class AttrID(ObjectID):
 
 
     @with_phil
-    def write(self, ndarray arr not None):
+    def write(self, ndarray arr not None, TypeID mtype=None):
         """(NDARRAY arr)
 
         Write the contents of a Numpy array too the attribute.  Note that
@@ -368,15 +370,16 @@ cdef class AttrID(ObjectID):
         The Numpy array must be C-contiguous.  If this is not the case,
         the write will fail with an exception.
         """
-        cdef TypeID mtype
         cdef hid_t space_id
         space_id = 0
 
         try:
             space_id = H5Aget_space(self.id)
             check_numpy_read(arr, space_id)
-            mtype = py_create(arr.dtype)
-
+            
+            if mtype is None:
+                mtype = py_create(arr.dtype)
+                
             attr_rw(self.id, mtype.id, PyArray_DATA(arr), 0)
 
         finally:
