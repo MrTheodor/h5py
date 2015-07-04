@@ -22,7 +22,7 @@ import os.path as op
 import setup_build, setup_configure
 
 
-VERSION = '2.5.0a0'
+VERSION = '2.5.0'
 
 
 # --- Custom Distutils commands -----------------------------------------------
@@ -136,6 +136,6 @@ setup(
   ext_modules = [Extension('h5py.x',['x.c'])],  # To trick build into running build_ext
   requires = ['numpy (>=1.6.1)', 'Cython (>=0.17)'],
   install_requires = ['numpy>=1.6.1', 'Cython>=0.17', 'six'],
-  setup_requires = ['pkgconfig', 'six'],
+  setup_requires = ['numpy>=1.6.1', 'Cython>=0.17', 'pkgconfig', 'six'],
   cmdclass = CMDCLASS,
 )
